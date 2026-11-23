@@ -1,0 +1,87 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f7f7f5;
+  --foreground: #1a1a1a;
+  --card: #ffffff;
+  --border: #e4e4e0;
+  --muted: #6b6b66;
+  --accent: #e8730c;
+  --accent-fg: #ffffff;
+  --up: #16a34a;
+  --down: #dc2626;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0e0f11;
+    --foreground: #ececec;
+    --card: #17191c;
+    --border: #2a2d31;
+    --muted: #9a9ca1;
+    --accent: #f59e0b;
+    --accent-fg: #111111;
+    --up: #22c55e;
+    --down: #f87171;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+@layer components {
+  .card {
+    @apply rounded-xl border p-5;
+    background: var(--card);
+    border-color: var(--border);
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-medium transition-opacity hover:opacity-90 disabled:opacity-50;
+    background: var(--accent);
+    color: var(--accent-fg);
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center rounded-lg border px-3 py-1.5 text-sm transition-colors;
+    border-color: var(--border);
+  }
+  .btn-ghost:hover {
+    background: color-mix(in srgb, var(--foreground) 6%, transparent);
+  }
+  .input {
+    @apply w-full rounded-lg border px-3 py-2 text-sm outline-none;
+    background: var(--background);
+    border-color: var(--border);
+  }
+  .input:focus {
+    border-color: var(--accent);
+  }
+  .label {
+    @apply mb-1 block text-xs font-medium uppercase tracking-wide;
+    color: var(--muted);
+  }
+  .table {
+    @apply w-full text-sm;
+  }
+  .table th {
+    @apply border-b px-3 py-2 text-left text-xs font-medium uppercase tracking-wide;
+    border-color: var(--border);
+    color: var(--muted);
+  }
+  .table td {
+    @apply border-b px-3 py-2;
+    border-color: var(--border);
+  }
+  .num {
+    @apply text-right tabular-nums;
+  }
+}
