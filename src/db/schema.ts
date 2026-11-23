@@ -11,6 +11,7 @@ import {
   uniqueIndex,
   index,
   pgEnum,
+  jsonb,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { DEFAULT_SERVER, SERVERS, type Server } from "@/lib/servers";
@@ -83,19 +84,31 @@ export const profile = pgTable("profile", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-/** Catalog of tradeable items (shared across servers). */
+/**
+ * Item catalog. Game items are seeded from data/items.json (keyed by game_id);
+ * admins can also add custom items (game_id null). Names are NOT unique — the
+ * game reuses some — so always key on id/game_id.
+ */
 export const item = pgTable(
   "item",
   {
     id: serial("id").primaryKey(),
+    gameId: integer("game_id").unique(),
     name: text("name").notNull(),
+    /** Inventory tab: equip | use | setup | etc | cash | deco */
+    tab: text("tab"),
     category: text("category"),
+    description: text("description"),
     iconUrl: text("icon_url"),
+    /** False for untradeable / quest / cash items; hidden from pickers. */
+    tradeable: boolean("tradeable").notNull().default(true),
+    npcPrice: bigint("npc_price", { mode: "number" }),
+    stats: jsonb("stats").$type<Record<string, number>>(),
     /** The price provider's identifier for this item; null = not mapped (manual prices only). */
     externalId: text("external_id").unique(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("item_name_lower_idx").on(sql`lower(${t.name})`)],
+  (t) => [index("item_name_lower_idx").on(sql`lower(${t.name})`), index("item_tab_category_idx").on(t.tab, t.category)],
 );
 
 /**

@@ -26,11 +26,13 @@ export function mockPriceAt(externalId: string, server: Server, timeMs: number):
   return Math.max(1, Math.round(base * serverSkew * (1 + trend + wave + noise)));
 }
 
-export function mockProvider(catalog: () => Promise<{ name: string }[]>): PriceProvider {
+export function mockProvider(catalog: () => Promise<{ name: string; gameId: number | null }[]>): PriceProvider {
   return {
     id: MOCK_PROVIDER_ID,
     label: "Mock feed (testing)",
     maxBatchSize: 500,
+
+    externalIdForGameId: (gameId) => `mock:${gameId}`,
 
     async fetchPrices(server, externalIds) {
       const now = Date.now();
@@ -38,8 +40,12 @@ export function mockProvider(catalog: () => Promise<{ name: string }[]>): PriceP
     },
 
     async listItems(): Promise<ProviderItem[]> {
-      // Pretend the provider carries every item already in our catalog.
-      return (await catalog()).map((i) => ({ externalId: `mock:${i.name.toLowerCase()}`, name: i.name }));
+      // Pretend the provider carries every tradeable item in our catalog, keyed by game ID.
+      return (await catalog()).map((i) => ({
+        externalId: i.gameId != null ? `mock:${i.gameId}` : `mock:${i.name.toLowerCase()}`,
+        name: i.name,
+        gameId: i.gameId,
+      }));
     },
   };
 }

@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import { SERVERS } from "@/lib/servers";
@@ -23,15 +23,32 @@ function revalidateAll() {
   revalidatePath("/u/[username]", "page");
 }
 
-/** Map lowercase item names → item rows. */
-async function itemsByName(names: string[]) {
-  if (names.length === 0) return new Map<string, typeof item.$inferSelect>();
-  const lowered = [...new Set(names.map((n) => n.toLowerCase()))];
+/**
+ * Resolve user-typed item references (names or game IDs) → item rows, keyed by
+ * the lowercased input. Names can be shared by several game items: prefer
+ * tradeable ones, then the lowest game ID.
+ */
+async function itemsByName(refs: string[]) {
+  const out = new Map<string, typeof item.$inferSelect>();
+  const keys = [...new Set(refs.map((n) => n.trim().toLowerCase()))].filter(Boolean);
+  if (keys.length === 0) return out;
+  const ids = keys.filter((k) => /^\d+$/.test(k)).map(Number);
   const rows = await db
     .select()
     .from(item)
-    .where(inArray(sql<string>`lower(${item.name})`, lowered));
-  return new Map(rows.map((r) => [r.name.toLowerCase(), r]));
+    .where(
+      ids.length
+        ? or(inArray(sql<string>`lower(${item.name})`, keys), inArray(item.gameId, ids))
+        : inArray(sql<string>`lower(${item.name})`, keys),
+    );
+  const better = (a: typeof item.$inferSelect, b: typeof item.$inferSelect) =>
+    Number(b.tradeable) - Number(a.tradeable) || (a.gameId ?? Infinity) - (b.gameId ?? Infinity);
+  for (const r of [...rows].sort(better)) {
+    const byName = r.name.toLowerCase();
+    if (!out.has(byName)) out.set(byName, r);
+    if (r.gameId != null && !out.has(String(r.gameId))) out.set(String(r.gameId), r);
+  }
+  return out;
 }
 
 /* ───────────── Profile ───────────── */
@@ -159,7 +176,13 @@ export async function createItems(_prev: FormState, formData: FormData): Promise
   }).filter((v) => v.name);
   if (values.length === 0) return { error: "Enter at least one item name" };
 
-  const inserted = await db.insert(item).values(values).onConflictDoNothing().returning({ id: item.id });
+  const existing = await itemsByName(values.map((v) => v.name));
+  const fresh = values.filter(
+    (v, i) => !existing.has(v.name.toLowerCase()) && values.findIndex((w) => w.name.toLowerCase() === v.name.toLowerCase()) === i,
+  );
+  const inserted = fresh.length
+    ? await db.insert(item).values(fresh).returning({ id: item.id })
+    : [];
   revalidatePath("/admin/prices");
   revalidatePath("/dashboard");
   const skipped = values.length - inserted.length;

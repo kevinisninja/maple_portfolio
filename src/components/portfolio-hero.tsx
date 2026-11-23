@@ -36,11 +36,13 @@ export function PortfolioHero({
   liveTotal,
   today,
   title = "Net worth",
+  emptyText = "Your value history appears here after your first full day.",
 }: {
   history: Point[];
   liveTotal: number;
   today: string;
   title?: string;
+  emptyText?: string;
 }) {
   const [range, setRange] = useState<RangeKey>("1M");
   const [hover, setHover] = useState<number | null>(null);
@@ -185,7 +187,7 @@ export function PortfolioHero({
           </>
         ) : (
           <div className="flex h-56 items-center justify-center rounded-lg border border-dashed border-[var(--border)] text-sm text-[var(--muted)] sm:h-64">
-            Your value history appears here after your first full day.
+            {emptyText}
           </div>
         )}
       </div>

@@ -10,6 +10,9 @@ export async function Nav() {
         <Link href="/" className="mr-auto font-semibold tracking-tight">
           🍁 Maple Portfolio
         </Link>
+        <Link href="/items" className="text-sm hover:underline">
+          Items
+        </Link>
         <Link href="/leaderboard" className="text-sm hover:underline">
           Leaderboard
         </Link>

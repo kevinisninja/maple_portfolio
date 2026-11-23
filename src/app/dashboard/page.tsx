@@ -1,6 +1,4 @@
 import Link from "next/link";
-import { asc } from "drizzle-orm";
-import { db, schema } from "@/db";
 import { requireUser } from "@/lib/auth";
 import { getHistory, getHoldings, getItemHistories, getOrCreateProfile } from "@/lib/portfolio";
 import { PortfolioView } from "@/components/portfolio-view";
@@ -11,11 +9,7 @@ export const metadata = { title: "My portfolio · Maple Portfolio" };
 export default async function DashboardPage() {
   const user = await requireUser();
   const profile = await getOrCreateProfile(user);
-  const [holdings, history, items] = await Promise.all([
-    getHoldings(user.id, profile.server),
-    getHistory(user.id),
-    db.select({ id: schema.item.id, name: schema.item.name }).from(schema.item).orderBy(asc(schema.item.name)),
-  ]);
+  const [holdings, history] = await Promise.all([getHoldings(user.id, profile.server), getHistory(user.id)]);
   const sparks = await getItemHistories(profile.server, holdings.map((h) => h.itemId));
 
   return (
@@ -34,11 +28,10 @@ export default async function DashboardPage() {
       <aside className="space-y-6 lg:sticky lg:top-6 lg:self-start">
         <section className="card">
           <h2 className="mb-3 font-semibold">Add an item</h2>
-          {items.length === 0 ? (
-            <p className="text-sm text-[var(--muted)]">No items in the catalog yet. An admin needs to add some.</p>
-          ) : (
-            <AddHoldingForm items={items} />
-          )}
+          <AddHoldingForm />
+          <Link href="/items" className="mt-3 block text-center text-sm text-[var(--accent)] hover:underline">
+            Browse the item catalog →
+          </Link>
         </section>
         <section className="card">
           <h2 className="mb-3 font-semibold">Bulk import</h2>

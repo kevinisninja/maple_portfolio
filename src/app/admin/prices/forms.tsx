@@ -105,17 +105,21 @@ export function CreateItemsForm() {
   const [state, action, pending] = useActionState<FormState, FormData>(createItems, null);
   return (
     <form action={action} className="space-y-3">
+      <p className="text-xs text-[var(--muted)]">
+        Game items come from the bundled catalog automatically. Use this only for things that aren&apos;t in the game
+        data.
+      </p>
       <div>
         <label className="label" htmlFor="items-text">One per line: name | category | icon URL</label>
         <textarea
           id="items-text"
           name="text"
-          rows={5}
+          rows={3}
           className="input font-mono"
-          placeholder={"Chaos Scroll 60% | Scroll\nWhite Scroll | Scroll\nZakum Helmet | Equip"}
+          placeholder={"Event Bundle | Bundle"}
         />
       </div>
-      <button className="btn-primary w-full" disabled={pending}>{pending ? "Adding…" : "Add items"}</button>
+      <button className="btn-ghost w-full" disabled={pending}>{pending ? "Adding…" : "Add custom items"}</button>
       <FormStatus state={state} />
     </form>
   );
@@ -127,13 +131,13 @@ export function PriceImportForm({ server }: { server: Server }) {
     <form action={action} className="space-y-3">
       <input type="hidden" name="server" value={server} />
       <div>
-        <label className="label" htmlFor="prices-text">One per line: name, price</label>
+        <label className="label" htmlFor="prices-text">One per line: name or item ID, price</label>
         <textarea
           id="prices-text"
           name="text"
           rows={5}
           className="input font-mono"
-          placeholder={"Chaos Scroll 60%, 45m\nWhite Scroll, 120m"}
+          placeholder={"Zakum Helmet, 45m\n2070006, 1.2m"}
         />
       </div>
       <button className="btn-primary w-full" disabled={pending}>{pending ? "Saving…" : "Save prices"}</button>

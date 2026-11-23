@@ -1,5 +1,5 @@
 import "server-only";
-import { eq, isNotNull, lt, sql } from "drizzle-orm";
+import { eq, isNotNull, lt, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { SERVERS } from "@/lib/servers";
 import { shiftDay, todayUtc } from "@/lib/dates";
@@ -7,16 +7,20 @@ import { refreshSnapshots } from "@/lib/portfolio";
 import { MOCK_PROVIDER_ID, mockPriceAt } from "./mock";
 
 /**
- * Testing only: write `days` of past mock prices for every mapped item, then
+ * Testing only: write `days` of past mock prices for every mapped item that
+ * someone holds, then
  * rebuild past snapshots from users' *current* holdings, so charts have shape.
  * Never overwrites existing (e.g. manual) price rows.
  */
 export async function backfillMockHistory(days = 90) {
   const today = todayUtc();
-  const mapped = await db
-    .select({ id: schema.item.id, externalId: schema.item.externalId })
+  // Only items someone holds: the whole catalog would be ~900K rows for nothing.
+  const held = await db
+    .selectDistinct({ id: schema.item.id, externalId: schema.item.externalId, gameId: schema.item.gameId })
     .from(schema.item)
-    .where(isNotNull(schema.item.externalId));
+    .innerJoin(schema.holding, eq(schema.holding.itemId, schema.item.id))
+    .where(or(isNotNull(schema.item.externalId), isNotNull(schema.item.gameId)));
+  const mapped = held.map((h) => ({ id: h.id, externalId: h.externalId ?? `mock:${h.gameId}` }));
 
   const rows = [];
   for (const server of SERVERS) {
@@ -24,7 +28,7 @@ export async function backfillMockHistory(days = 90) {
       const day = shiftDay(today, -d);
       const at = Date.parse(`${day}T23:45:00Z`);
       for (const m of mapped) {
-        rows.push({ itemId: m.id, server, day, price: mockPriceAt(m.externalId!, server, at), source: MOCK_PROVIDER_ID });
+        rows.push({ itemId: m.id, server, day, price: mockPriceAt(m.externalId, server, at), source: MOCK_PROVIDER_ID });
       }
     }
   }

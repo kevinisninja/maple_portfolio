@@ -1,6 +1,6 @@
 import "server-only";
 import { after } from "next/server";
-import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { Server } from "@/lib/servers";
 import { todayUtc } from "@/lib/dates";
@@ -46,10 +46,15 @@ export async function ensureFreshPrices(
   if (!provider || itemIds?.length === 0) return result;
 
   try {
-    const mapped = await db
-      .select({ id: item.id, externalId: item.externalId })
+    const derive = provider.externalIdForGameId?.bind(provider);
+    const priceable = derive ? or(isNotNull(item.externalId), isNotNull(item.gameId)) : isNotNull(item.externalId);
+    const candidates = await db
+      .select({ id: item.id, externalId: item.externalId, gameId: item.gameId })
       .from(item)
-      .where(itemIds ? and(isNotNull(item.externalId), inArray(item.id, itemIds)) : isNotNull(item.externalId));
+      .where(itemIds ? and(priceable, inArray(item.id, itemIds)) : and(priceable, eq(item.tradeable, true)));
+    const mapped = candidates
+      .map((c) => ({ id: c.id, externalId: c.externalId ?? (derive && c.gameId != null ? derive(c.gameId) : null) }))
+      .filter((c): c is { id: number; externalId: string } => c.externalId != null);
     if (mapped.length === 0) return result;
 
     const ttl = force ? "1 minute" : `${PRICE_TTL_MINUTES} minutes`;
@@ -61,7 +66,7 @@ export async function ensureFreshPrices(
       RETURNING item_id
     `);
     const claimedIds = new Set(claimed.rows.map((r) => Number(r.item_id)));
-    const toFetch = mapped.filter((m) => claimedIds.has(m.id)) as { id: number; externalId: string }[];
+    const toFetch = mapped.filter((m) => claimedIds.has(m.id));
     result.claimed = toFetch.length;
     if (toFetch.length === 0) return result;
 
@@ -141,45 +146,66 @@ async function markFailed(server: Server, itemIds: number[], error: string) {
 export type SyncResult = { matched: number; created: number; unmatchedProviderItems: number };
 
 /**
- * Pull the provider's item list and set external_id on catalog items whose name
- * matches (case-insensitive). Optionally create catalog items for the rest.
+ * Pull the provider's item list and set external_id on catalog items: by game ID
+ * when the provider exposes one, otherwise by name (only when that name is
+ * unique in our catalog). Optionally create catalog items for the rest.
  */
 export async function syncCatalogFromProvider({ createMissing = false } = {}): Promise<SyncResult> {
   const provider = getProvider();
   if (!provider?.listItems) throw new Error("The active price provider doesn't support listing items");
   const providerItems = await provider.listItems(AbortSignal.timeout(20_000));
 
-  const unmapped = await db.select({ id: item.id, name: item.name }).from(item).where(isNull(item.externalId));
-  const byName = new Map(unmapped.map((u) => [u.name.toLowerCase(), u.id]));
-  const taken = new Set(
-    (await db.select({ e: item.externalId }).from(item).where(isNotNull(item.externalId))).map((r) => r.e),
+  const catalog = await db
+    .select({ id: item.id, gameId: item.gameId, name: item.name, externalId: item.externalId })
+    .from(item);
+  const byGameId = new Map(catalog.filter((c) => c.gameId != null).map((c) => [c.gameId!, c]));
+  const nameCounts = new Map<string, number>();
+  for (const c of catalog) nameCounts.set(c.name.toLowerCase(), (nameCounts.get(c.name.toLowerCase()) ?? 0) + 1);
+  const byUniqueName = new Map(
+    catalog.filter((c) => nameCounts.get(c.name.toLowerCase()) === 1).map((c) => [c.name.toLowerCase(), c]),
   );
+  const taken = new Set(catalog.map((c) => c.externalId).filter(Boolean));
 
-  let matched = 0;
+  const assignments: { id: number; ext: string }[] = [];
   const leftovers = [];
   for (const p of providerItems) {
     if (taken.has(p.externalId)) continue;
-    const id = byName.get(p.name.toLowerCase());
-    if (id != null) {
-      await db.update(item).set({ externalId: p.externalId }).where(eq(item.id, id));
-      byName.delete(p.name.toLowerCase());
+    const match = (p.gameId != null ? byGameId.get(p.gameId) : undefined) ?? byUniqueName.get(p.name.toLowerCase());
+    if (match && !match.externalId) {
+      assignments.push({ id: match.id, ext: p.externalId });
+      match.externalId = p.externalId;
       taken.add(p.externalId);
-      matched++;
-    } else {
+    } else if (!match) {
       leftovers.push(p);
     }
+  }
+
+  for (let i = 0; i < assignments.length; i += 1000) {
+    await db.execute(sql`
+      UPDATE item SET external_id = x.ext
+      FROM jsonb_to_recordset(${JSON.stringify(assignments.slice(i, i + 1000))}::jsonb) AS x(id int, ext text)
+      WHERE item.id = x.id
+    `);
   }
 
   let created = 0;
   if (createMissing && leftovers.length) {
     const inserted = await db
       .insert(item)
-      .values(leftovers.map((p) => ({ name: p.name, category: p.category ?? null, iconUrl: p.iconUrl ?? null, externalId: p.externalId })))
+      .values(
+        leftovers.map((p) => ({
+          name: p.name,
+          gameId: p.gameId ?? null,
+          category: p.category ?? null,
+          iconUrl: p.iconUrl ?? null,
+          externalId: p.externalId,
+        })),
+      )
       .onConflictDoNothing()
       .returning({ id: item.id });
     created = inserted.length;
   }
-  return { matched, created, unmatchedProviderItems: leftovers.length - created };
+  return { matched: assignments.length, created, unmatchedProviderItems: leftovers.length - created };
 }
 
 /* ───────────── Admin stats ───────────── */

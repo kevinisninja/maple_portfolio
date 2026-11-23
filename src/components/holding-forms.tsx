@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import { importHoldings, removeHolding, setHolding, updateProfile, type FormState } from "@/app/actions";
 import { SERVERS, SERVER_LABELS, type Server } from "@/lib/servers";
 import { FormStatus } from "./form-status";
+import { ItemPicker, type PickedItem } from "./item-picker";
 
 export function QuantityCell({ itemId, quantity }: { itemId: number; quantity: number }) {
   const [, action, pending] = useActionState<FormState, FormData>(setHolding, null);
@@ -34,26 +35,14 @@ export function QuantityCell({ itemId, quantity }: { itemId: number; quantity: n
   );
 }
 
-export function AddHoldingForm({ items }: { items: { id: number; name: string }[] }) {
+export function AddHoldingForm({ initial }: { initial?: PickedItem | null }) {
   const [state, action, pending] = useActionState<FormState, FormData>(setHolding, null);
   return (
     <form action={action} className="space-y-3">
       <input type="hidden" name="mode" value="add" />
       <div>
-        <label className="label" htmlFor="add-item">Item</label>
-        <input list="item-options" id="add-item" className="input" placeholder="Search items…" autoComplete="off"
-          onChange={(e) => {
-            const match = items.find((i) => i.name.toLowerCase() === e.currentTarget.value.toLowerCase());
-            const hidden = e.currentTarget.form?.elements.namedItem("itemId") as HTMLInputElement | null;
-            if (hidden) hidden.value = match ? String(match.id) : "";
-          }}
-        />
-        <datalist id="item-options">
-          {items.map((i) => (
-            <option key={i.id} value={i.name} />
-          ))}
-        </datalist>
-        <input type="hidden" name="itemId" />
+        <span className="label">Item</span>
+        <ItemPicker initial={initial} />
       </div>
       <div>
         <label className="label" htmlFor="add-qty">Quantity to add</label>
@@ -78,7 +67,7 @@ export function ImportForm() {
           name="text"
           rows={6}
           className="input font-mono"
-          placeholder={"Chaos Scroll 60%, 12\nWhite Scroll, 3\n2x Zakum Helmet"}
+          placeholder={"Zakum Helmet, 1\nIlbi Throwing Stars, 3\n2070006, 2\n50x Red Potion"}
         />
       </div>
       <div className="flex gap-4 text-sm">

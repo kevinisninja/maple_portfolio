@@ -11,7 +11,9 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "typecheck": "next typegen && tsc --noEmit",
-    "vercel-build": "drizzle-kit migrate && next build"
+    "vercel-build": "drizzle-kit migrate && node scripts/seed-items.mjs && next build",
+    "items:build": "node scripts/build-item-data.mjs",
+    "items:seed": "node scripts/seed-items.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.2.1",

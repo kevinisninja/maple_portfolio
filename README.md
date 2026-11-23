@@ -10,7 +10,7 @@ Track the meso value of your MapleStory Classic items over time. Sign in with Go
 | --- | --- |
 | `user`, `session`, `account`, `verification` | Better Auth |
 | `profile` | Username, server (Windia default), public/private |
-| `item` | Item catalog (managed by admins) |
+| `item` | Item catalog: game items keyed by `game_id` (seeded from `data/items.json`), plus optional custom items |
 | `item_price` | Price per item, per server, per UTC day; `source` is `manual` or the provider ID |
 | `holding` | What each user owns |
 | `price_refresh` | Feed cache bookkeeping: last fetch attempt, success and error per item and server |
@@ -32,10 +32,21 @@ The code is in `src/lib/prices/`. A provider implements `PriceProvider` (`types.
 | `mock` | Fake prices that drift every 15 minutes, for testing the cache |
 | `mesos.watch` | Real feed. **Stub:** fill in the TODOs in `mesos-watch.ts`, set `IMPLEMENTED = true`, and add `MESOS_WATCH_API_KEY` |
 
+## Item catalog
+
+The catalog comes from the game client's datamined item dump (`tools/extract_items.py` output, kept out of git):
+
+```sh
+npm run items:build -- <path-to-extracted-items-folder>   # writes data/items.json + public/items/<id>.png
+```
+
+Commit the result. Every deploy runs `scripts/seed-items.mjs` after migrations, which upserts every item by `game_id`; re-running it is safe. Untradeable, quest and Cash Shop items are stored with `tradeable = false` and hidden from search and pickers. Item names are **not** unique (the game reuses some), so code keys on `id` or `game_id`. Imports accept a game ID in place of a name.
+
 ## Pages
 
 - `/`: landing page and top 10
 - `/dashboard`: your holdings, value chart, add/import items, profile settings
+- `/items` and `/items/<id>`: catalog search and browse, item detail with price history and stats
 - `/u/<username>`: public profile
 - `/leaderboard?server=windia|zenith`
 - `/admin/prices`: add items, set daily prices (only for emails in `ADMIN_EMAILS`)

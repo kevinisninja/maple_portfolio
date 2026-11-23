@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import { ItemIcon } from "./item-icon";
 import { mesos, fullMesos, pct } from "@/lib/format";
 import { Sparkline } from "./sparkline";
 import { QuantityCell } from "./holding-forms";
@@ -81,7 +83,9 @@ export function HoldingsList({ rows, editable = false }: { rows: HoldingListRow[
                   />
                   <ItemAvatar name={r.name} iconUrl={r.iconUrl} />
                   <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium">{r.name}</div>
+                    <Link href={`/items/${r.itemId}`} className="block truncate font-medium hover:underline">
+                      {r.name}
+                    </Link>
                     <div className="truncate text-xs text-[var(--muted)]">
                       {r.quantity.toLocaleString()} × {mesos(r.price)}
                       <span className="hidden sm:inline"> · {share.toFixed(1)}% of portfolio</span>
@@ -123,8 +127,11 @@ export function HoldingsList({ rows, editable = false }: { rows: HoldingListRow[
 
 function ItemAvatar({ name, iconUrl }: { name: string; iconUrl: string | null }) {
   if (iconUrl) {
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img src={iconUrl} alt="" className="h-9 w-9 shrink-0 rounded-full border border-[var(--border)] bg-[var(--card)] object-contain p-1" />;
+    return (
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--card)]">
+        <ItemIcon src={iconUrl} size={28} />
+      </span>
+    );
   }
   const initials = name
     .split(/\s+/)

@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { asc } from "drizzle-orm";
+import { asc, inArray, sql } from "drizzle-orm";
+import { searchItems } from "@/lib/catalog";
 import { db, schema } from "@/db";
 import { requireAdmin } from "@/lib/auth";
 import { latestPrices } from "@/lib/portfolio";
@@ -17,18 +18,35 @@ export const metadata = { title: "Prices · Maple Portfolio" };
 
 export default async function AdminPricesPage(props: PageProps<"/admin/prices">) {
   await requireAdmin();
-  const { server: raw } = await props.searchParams;
+  const sp = await props.searchParams;
+  const raw = Array.isArray(sp.server) ? sp.server[0] : sp.server;
+  const q = (Array.isArray(sp.q) ? sp.q[0] : sp.q)?.trim() ?? "";
   const server = isServer(raw) ? raw : DEFAULT_SERVER;
   const today = todayUtc();
 
   const status = providerStatus();
-  const [items, current, previous, stats] = await Promise.all([
-    db.select().from(schema.item).orderBy(asc(schema.item.name)),
+  const [ids, current, previous, stats] = await Promise.all([
+    // The catalog has thousands of items: list the ones in play (held or priced
+    // on this server), or search results when a query is given.
+    q
+      ? searchItems({ q, includeUntradeable: true, limit: 100 }).then((r) => r.items.map((i) => i.id))
+      : db
+          .execute<{ id: number }>(
+            sql`SELECT item_id AS id FROM holding UNION SELECT item_id FROM item_price WHERE server = ${server}`,
+          )
+          .then((r) => r.rows.map((x) => Number(x.id))),
     latestPrices(server, today),
     latestPrices(server, shiftDay(today, -1)),
     feedStats(server),
   ]);
-  const unmapped = items.filter((i) => !i.externalId).map((i) => ({ id: i.id, name: i.name }));
+  const items = ids.length
+    ? await db.select().from(schema.item).where(inArray(schema.item.id, ids)).orderBy(asc(schema.item.name))
+    : [];
+  const provider = getProvider();
+  // Only needed when the provider can't derive its IDs from game IDs.
+  const unmapped = provider?.externalIdForGameId
+    ? items.filter((i) => !i.externalId && i.gameId == null)
+    : items.filter((i) => !i.externalId);
 
   const rows = items.map((it) => ({
     id: it.id,
@@ -66,9 +84,19 @@ export default async function AdminPricesPage(props: PageProps<"/admin/prices">)
 
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
         <section className="card min-w-0 overflow-x-auto p-0">
-          <h2 className="px-5 pt-5 pb-2 font-semibold">{SERVER_LABELS[server]} prices</h2>
+          <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-5 pb-2">
+            <h2 className="font-semibold">
+              {q ? `Results for “${q}”` : `${SERVER_LABELS[server]} prices · items in play`}
+            </h2>
+            <form action="/admin/prices" className="flex gap-2">
+              <input type="hidden" name="server" value={server} />
+              <input name="q" defaultValue={q} className="input w-56 py-1.5" placeholder="Find any item…" aria-label="Find item" />
+            </form>
+          </div>
           {rows.length === 0 ? (
-            <p className="px-5 pb-5 text-sm text-[var(--muted)]">Add some items first.</p>
+            <p className="px-5 pb-5 text-sm text-[var(--muted)]">
+              {q ? "No items match." : "No items are held or priced yet. Search above to price any item."}
+            </p>
           ) : (
             <PriceGridForm server={server} rows={rows} today={today} />
           )}
@@ -103,11 +131,11 @@ export default async function AdminPricesPage(props: PageProps<"/admin/prices">)
               </ul>
             )}
             {status.configured && <FeedActions server={server} />}
-            {getProvider()?.id === MOCK_PROVIDER_ID && <MockTools />}
-            {unmapped.length > 0 && <ExternalIdForm items={unmapped} />}
+            {provider?.id === MOCK_PROVIDER_ID && <MockTools />}
+            {unmapped.length > 0 && <ExternalIdForm items={unmapped.map((i) => ({ id: i.id, name: i.name }))} />}
           </section>
           <section className="card">
-            <h2 className="mb-3 font-semibold">Add items</h2>
+            <h2 className="mb-3 font-semibold">Custom items</h2>
             <CreateItemsForm />
           </section>
           <section className="card">

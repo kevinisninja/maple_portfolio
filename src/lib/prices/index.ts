@@ -1,4 +1,5 @@
 import "server-only";
+import { eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { PriceProvider } from "./types";
 import { IMPLEMENTED as MESOS_WATCH_READY, mesosWatchProvider } from "./mesos-watch";
@@ -19,7 +20,12 @@ export function getProvider(): PriceProvider | null {
     case "mesos.watch":
       return MESOS_WATCH_READY && process.env.MESOS_WATCH_API_KEY ? mesosWatchProvider : null;
     case "mock":
-      return mockProvider(() => db.select({ name: schema.item.name }).from(schema.item));
+      return mockProvider(() =>
+        db
+          .select({ name: schema.item.name, gameId: schema.item.gameId })
+          .from(schema.item)
+          .where(eq(schema.item.tradeable, true)),
+      );
     default:
       return null;
   }
