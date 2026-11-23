@@ -2,7 +2,7 @@ import Link from "next/link";
 import { asc } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { requireUser } from "@/lib/auth";
-import { getHistory, getHoldings, getOrCreateProfile } from "@/lib/portfolio";
+import { getHistory, getHoldings, getItemHistories, getOrCreateProfile } from "@/lib/portfolio";
 import { PortfolioView } from "@/components/portfolio-view";
 import { AddHoldingForm, ImportForm, ProfileForm } from "@/components/holding-forms";
 
@@ -16,22 +16,22 @@ export default async function DashboardPage() {
     getHistory(user.id),
     db.select({ id: schema.item.id, name: schema.item.name }).from(schema.item).orderBy(asc(schema.item.name)),
   ]);
+  const sparks = await getItemHistories(profile.server, holdings.map((h) => h.itemId));
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+    <div className="grid gap-10 lg:grid-cols-[1fr_320px]">
       <div className="min-w-0 space-y-4">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h1 className="text-2xl font-semibold">Welcome, {user.name.split(" ")[0]}</h1>
-          {profile.isPublic && (
+        {profile.isPublic && (
+          <div className="flex justify-end">
             <Link href={`/u/${profile.username}`} className="text-sm text-[var(--accent)] hover:underline">
               View public profile →
             </Link>
-          )}
-        </div>
-        <PortfolioView holdings={holdings} history={history} server={profile.server} editable />
+          </div>
+        )}
+        <PortfolioView holdings={holdings} history={history} sparks={sparks} server={profile.server} editable />
       </div>
 
-      <aside className="space-y-6">
+      <aside className="space-y-6 lg:sticky lg:top-6 lg:self-start">
         <section className="card">
           <h2 className="mb-3 font-semibold">Add an item</h2>
           {items.length === 0 ? (

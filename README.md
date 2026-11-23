@@ -11,13 +11,26 @@ Track the meso value of your MapleStory Classic items over time. Sign in with Go
 | `user`, `session`, `account`, `verification` | Better Auth |
 | `profile` | Username, server (Windia default), public/private |
 | `item` | Item catalog (managed by admins) |
-| `item_price` | Price per item, per server, per UTC day (`source = 'manual'` for now) |
+| `item_price` | Price per item, per server, per UTC day; `source` is `manual` or the provider ID |
 | `holding` | What each user owns |
+| `price_refresh` | Feed cache bookkeeping: last fetch attempt, success and error per item and server |
 | `portfolio_snapshot` | Each user's total value per day, which drives the chart and leaderboard |
 
-- **Prices** are entered by admins at `/admin/prices`, one at a time or by pasting `Item name, 45m` lines. An item without a price today uses its most recent earlier price.
-- **Snapshots:** a Vercel Cron job (`vercel.json`, 00:05 UTC) creates each day's row for every user. Any holding or price change during the day updates that row, so each day ends with its closing value.
-- **Future automated prices:** write rows into `item_price` (with a different `source`) from `src/app/api/cron/snapshot/route.ts` before `refreshSnapshots()` runs.
+- **Prices** come from two places, both stored in `item_price` (one row per item, server and UTC day):
+  - **Manual:** admins enter them at `/admin/prices`, one at a time or by pasting `Item name, 45m` lines.
+  - **Automated feed** (optional): when `PRICE_PROVIDER` is set, prices are cached for 15 minutes. Viewing a portfolio checks its items, and any item fetched more than 15 minutes ago is refetched from the provider (5-second budget; on failure the last known price is shown). Each stale item is claimed atomically in `price_refresh`, so concurrent requests fetch it only once. A failed item is retried after 1 minute.
+  - An item without a price today uses its most recent earlier price.
+- **Snapshots:** a Vercel Cron job (`vercel.json`, 00:05 UTC) force-refreshes the feed, then creates each day's row for every user. Holding and price changes during the day update that row, so each day ends with its closing value.
+
+### Price providers
+
+The code is in `src/lib/prices/`. A provider implements `PriceProvider` (`types.ts`): `fetchPrices(server, externalIds)` and, optionally, `listItems()`. Catalog items link to provider items through `item.external_id`. Set it on the Prices page, or click **Map catalog to provider by name**. Unmapped items keep manual prices.
+
+| `PRICE_PROVIDER` | Behavior |
+| --- | --- |
+| *(unset)* | Manual prices only |
+| `mock` | Fake prices that drift every 15 minutes, for testing the cache |
+| `mesos.watch` | Real feed. **Stub:** fill in the TODOs in `mesos-watch.ts`, set `IMPLEMENTED = true`, and add `MESOS_WATCH_API_KEY` |
 
 ## Pages
 

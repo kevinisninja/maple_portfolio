@@ -1,7 +1,18 @@
 "use client";
 
 import { useActionState } from "react";
-import { createItems, deleteItem, importPrices, savePriceGrid, type FormState } from "@/app/actions";
+import {
+  backfillMock,
+  clearMock,
+  createItems,
+  deleteItem,
+  importPrices,
+  refreshFeedNow,
+  saveExternalIds,
+  savePriceGrid,
+  syncCatalog,
+  type FormState,
+} from "@/app/actions";
 import type { Server } from "@/lib/servers";
 import { mesos } from "@/lib/format";
 import { Change } from "@/components/change";
@@ -11,6 +22,8 @@ type Row = {
   id: number;
   name: string;
   category: string | null;
+  externalId: string | null;
+  source: string | null;
   price: number | null;
   priceDay: string | null;
   prevPrice: number | null;
@@ -38,10 +51,15 @@ export function PriceGridForm({ server, rows, today }: { server: Server; rows: R
             <tr key={r.id}>
               <td>
                 <div className="font-medium">{r.name}</div>
-                {r.category && <div className="text-xs text-[var(--muted)]">{r.category}</div>}
+                <div className="text-xs text-[var(--muted)]">
+                  {[r.category, r.externalId && `feed: ${r.externalId}`].filter(Boolean).join(" · ")}
+                </div>
               </td>
               <td className="num">
                 {mesos(r.price)}
+                {r.source && r.source !== "manual" && (
+                  <div className="text-xs text-[var(--muted)]">via {r.source}</div>
+                )}
                 {r.priceDay && r.priceDay !== today && (
                   <div className="text-xs text-[var(--muted)]">from {r.priceDay}</div>
                 )}
@@ -121,5 +139,82 @@ export function PriceImportForm({ server }: { server: Server }) {
       <button className="btn-primary w-full" disabled={pending}>{pending ? "Saving…" : "Save prices"}</button>
       <FormStatus state={state} />
     </form>
+  );
+}
+
+export function FeedActions({ server }: { server: Server }) {
+  const [syncState, syncAction, syncing] = useActionState<FormState, FormData>(syncCatalog, null);
+  const [refreshState, refreshAction, refreshing] = useActionState<FormState, FormData>(refreshFeedNow, null);
+  return (
+    <div className="space-y-3 border-t border-[var(--border)] pt-3">
+      <form action={refreshAction}>
+        <input type="hidden" name="server" value={server} />
+        <button className="btn-ghost w-full" disabled={refreshing}>
+          {refreshing ? "Fetching…" : "Refresh all prices now"}
+        </button>
+        <FormStatus state={refreshState} />
+      </form>
+      <form action={syncAction} className="space-y-2">
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" name="createMissing" /> Also add provider items we don&apos;t have
+        </label>
+        <button className="btn-ghost w-full" disabled={syncing}>
+          {syncing ? "Syncing…" : "Map catalog to provider by name"}
+        </button>
+        <FormStatus state={syncState} />
+      </form>
+    </div>
+  );
+}
+
+export function ExternalIdForm({ items }: { items: { id: number; name: string }[] }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(saveExternalIds, null);
+  return (
+    <form action={action} className="space-y-2 border-t border-[var(--border)] pt-3">
+      <p className="text-xs text-[var(--muted)]">
+        Unmapped items use manual prices only. Enter the provider&apos;s ID to have the feed price them.
+      </p>
+      <div className="max-h-64 space-y-1 overflow-y-auto">
+        {items.map((i) => (
+          <label key={i.id} className="flex items-center gap-2 text-sm">
+            <span className="min-w-0 flex-1 truncate">{i.name}</span>
+            <input name={`ext_${i.id}`} className="input w-28 py-1" placeholder="provider ID" />
+          </label>
+        ))}
+      </div>
+      <button className="btn-ghost w-full" disabled={pending}>
+        {pending ? "Saving…" : "Save mappings"}
+      </button>
+      <FormStatus state={state} />
+    </form>
+  );
+}
+
+export function MockTools() {
+  const [fillState, fillAction, filling] = useActionState<FormState, FormData>(backfillMock, null);
+  const [clearState, clearAction, clearing] = useActionState<FormState, FormData>(clearMock, null);
+  return (
+    <div className="space-y-2 border-t border-[var(--border)] pt-3">
+      <p className="text-xs text-[var(--muted)]">
+        Testing tools. Map the catalog first, then generate fake history so charts have something to show.
+      </p>
+      <form action={fillAction}>
+        <button className="btn-ghost w-full" disabled={filling}>
+          {filling ? "Generating…" : "Generate 90 days of mock history"}
+        </button>
+        <FormStatus state={fillState} />
+      </form>
+      <form
+        action={clearAction}
+        onSubmit={(e) => {
+          if (!confirm("Delete all mock prices and every past portfolio snapshot?")) e.preventDefault();
+        }}
+      >
+        <button className="btn-ghost w-full text-[var(--down)]" disabled={clearing}>
+          {clearing ? "Clearing…" : "Clear mock data"}
+        </button>
+        <FormStatus state={clearState} />
+      </form>
+    </div>
   );
 }

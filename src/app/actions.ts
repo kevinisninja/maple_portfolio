@@ -8,6 +8,10 @@ import { SERVERS } from "@/lib/servers";
 import { requireAdmin, requireUser } from "@/lib/auth";
 import { getOrCreateProfile, parseAmount, parseItemLines, refreshSnapshots } from "@/lib/portfolio";
 import { todayUtc } from "@/lib/dates";
+import { ensureFreshPrices, syncCatalogFromProvider } from "@/lib/prices/cache";
+import { getProvider } from "@/lib/prices";
+import { MOCK_PROVIDER_ID } from "@/lib/prices/mock";
+import { backfillMockHistory, clearMockData } from "@/lib/prices/mock-tools";
 
 const { profile, item, holding, itemPrice } = schema;
 
@@ -233,4 +237,71 @@ export async function importPrices(_prev: FormState, formData: FormData): Promis
   revalidatePath("/admin/prices");
   revalidateAll();
   return { ok: `Saved ${prices.length} price(s) for today`, details: [...errors, ...unknown] };
+}
+
+/* ───────────── Admin: automated price feed ───────────── */
+
+export async function syncCatalog(_prev: FormState, formData: FormData): Promise<FormState> {
+  await requireAdmin();
+  try {
+    const r = await syncCatalogFromProvider({ createMissing: formData.get("createMissing") === "on" });
+    revalidatePath("/admin/prices");
+    return {
+      ok: `Mapped ${r.matched} item(s)${r.created ? `, created ${r.created}` : ""}`,
+      details: r.unmatchedProviderItems ? [`${r.unmatchedProviderItems} provider item(s) have no matching catalog item`] : [],
+    };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Sync failed" };
+  }
+}
+
+/** Inputs named `ext_<itemId>`; blank inputs are skipped. */
+export async function saveExternalIds(_prev: FormState, formData: FormData): Promise<FormState> {
+  await requireAdmin();
+  let saved = 0;
+  const errors: string[] = [];
+  for (const [key, value] of formData.entries()) {
+    if (!key.startsWith("ext_")) continue;
+    const id = Number(key.slice(4));
+    const ext = String(value).trim();
+    if (!ext) continue;
+    try {
+      await db.update(item).set({ externalId: ext }).where(eq(item.id, id));
+      saved++;
+    } catch {
+      errors.push(`External ID "${ext}" is already used by another item`);
+    }
+  }
+  revalidatePath("/admin/prices");
+  return { ok: `Saved ${saved} mapping(s)`, details: errors };
+}
+
+export async function refreshFeedNow(_prev: FormState, formData: FormData): Promise<FormState> {
+  await requireAdmin();
+  const server = z.enum(SERVERS).safeParse(formData.get("server"));
+  if (!server.success) return { error: "Unknown server" };
+  const r = await ensureFreshPrices(server.data, undefined, { force: true, timeoutMs: 20_000 });
+  if (!r.provider) return { error: "No price provider is configured" };
+  revalidatePath("/admin/prices");
+  revalidateAll();
+  return { ok: `Fetched ${r.claimed} item(s): ${r.updated} updated, ${r.failed} failed` };
+}
+
+/* ───────────── Admin: mock feed tools (testing) ───────────── */
+
+export async function backfillMock(): Promise<FormState> {
+  await requireAdmin();
+  if (getProvider()?.id !== MOCK_PROVIDER_ID) return { error: "Only available while PRICE_PROVIDER=mock" };
+  const r = await backfillMockHistory(90);
+  revalidatePath("/admin/prices");
+  revalidateAll();
+  return { ok: `Generated 90 days of history for ${r.items} item(s)` };
+}
+
+export async function clearMock(): Promise<FormState> {
+  await requireAdmin();
+  const r = await clearMockData();
+  revalidatePath("/admin/prices");
+  revalidateAll();
+  return { ok: `Removed ${r.priceRows} mock price row(s) and past snapshots` };
 }

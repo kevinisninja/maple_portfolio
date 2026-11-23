@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { getSessionUser } from "@/lib/auth";
-import { getHistory, getHoldings, getProfileByUsername } from "@/lib/portfolio";
+import { getHistory, getHoldings, getItemHistories, getProfileByUsername } from "@/lib/portfolio";
 import { PortfolioView } from "@/components/portfolio-view";
 
 export async function generateMetadata(props: PageProps<"/u/[username]">) {
@@ -23,9 +23,10 @@ export default async function PublicProfilePage(props: PageProps<"/u/[username]"
     getHoldings(profile.userId, profile.server),
     getHistory(profile.userId),
   ]);
+  const sparks = await getItemHistories(profile.server, holdings.map((h) => h.itemId));
 
   return (
-    <div className="space-y-4">
+    <div className="mx-auto max-w-3xl space-y-8">
       <div className="flex items-center gap-3">
         {owner?.image && (
           // eslint-disable-next-line @next/next/no-img-element
@@ -36,7 +37,7 @@ export default async function PublicProfilePage(props: PageProps<"/u/[username]"
           {!profile.isPublic && <p className="text-sm text-[var(--muted)]">Private — only you can see this.</p>}
         </div>
       </div>
-      <PortfolioView holdings={holdings} history={history} server={profile.server} />
+      <PortfolioView holdings={holdings} history={history} sparks={sparks} server={profile.server} />
     </div>
   );
 }

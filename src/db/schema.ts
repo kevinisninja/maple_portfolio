@@ -91,6 +91,8 @@ export const item = pgTable(
     name: text("name").notNull(),
     category: text("category"),
     iconUrl: text("icon_url"),
+    /** The price provider's identifier for this item; null = not mapped (manual prices only). */
+    externalId: text("external_id").unique(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => [uniqueIndex("item_name_lower_idx").on(sql`lower(${t.name})`)],
@@ -115,6 +117,25 @@ export const itemPrice = pgTable(
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (t) => [primaryKey({ columns: [t.itemId, t.server, t.day] })],
+);
+
+/**
+ * Cache bookkeeping for the automated price feed: when each (item, server) was
+ * last fetched. A request "claims" stale rows by bumping last_attempt_at, so
+ * concurrent requests don't fetch the same item twice.
+ */
+export const priceRefresh = pgTable(
+  "price_refresh",
+  {
+    itemId: integer("item_id")
+      .notNull()
+      .references(() => item.id, { onDelete: "cascade" }),
+    server: serverEnum("server").notNull(),
+    lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true }).notNull(),
+    lastSuccessAt: timestamp("last_success_at", { withTimezone: true }),
+    lastError: text("last_error"),
+  },
+  (t) => [primaryKey({ columns: [t.itemId, t.server] })],
 );
 
 /** What a user owns. Valued against their profile's server. */

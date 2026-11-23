@@ -1,8 +1,9 @@
 import "server-only";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { Server } from "@/lib/servers";
 import { todayUtc, shiftDay } from "./dates";
+import { ensureFreshPrices } from "./prices/cache";
 
 const { profile, item, holding, portfolioSnapshot } = schema;
 
@@ -40,12 +41,12 @@ export async function getProfileByUsername(username: string) {
 
 /* ───────────── Prices ───────────── */
 
-type PriceRow = { item_id: number; price: number; day: string };
+type PriceRow = { item_id: number; price: number; day: string; source: string };
 
 /** Latest known price per item on or before `day` for a server. */
 export async function latestPrices(server: Server, day = todayUtc()): Promise<Map<number, PriceRow>> {
   const res = await db.execute<PriceRow>(sql`
-    SELECT DISTINCT ON (item_id) item_id, price::float8 AS price, day::text AS day
+    SELECT DISTINCT ON (item_id) item_id, price::float8 AS price, day::text AS day, source
     FROM item_price
     WHERE server = ${server} AND day <= ${day}
     ORDER BY item_id, day DESC
@@ -71,19 +72,23 @@ export type HoldingRow = {
 
 export async function getHoldings(userId: string, server: Server): Promise<HoldingRow[]> {
   const today = todayUtc();
-  const [rows, current, previous] = await Promise.all([
-    db
-      .select({
-        holdingId: holding.id,
-        itemId: item.id,
-        name: item.name,
-        category: item.category,
-        iconUrl: item.iconUrl,
-        quantity: holding.quantity,
-      })
-      .from(holding)
-      .innerJoin(item, eq(holding.itemId, item.id))
-      .where(eq(holding.userId, userId)),
+  const rows = await db
+    .select({
+      holdingId: holding.id,
+      itemId: item.id,
+      name: item.name,
+      category: item.category,
+      iconUrl: item.iconUrl,
+      quantity: holding.quantity,
+    })
+    .from(holding)
+    .innerJoin(item, eq(holding.itemId, item.id))
+    .where(eq(holding.userId, userId));
+
+  // Refetch any of these items whose cached price is older than the TTL.
+  await ensureFreshPrices(server, rows.map((r) => r.itemId));
+
+  const [current, previous] = await Promise.all([
     latestPrices(server, today),
     latestPrices(server, shiftDay(today, -1)),
   ]);
@@ -113,8 +118,8 @@ export async function getHoldings(userId: string, server: Server): Promise<Holdi
  * day's row) and whenever holdings or prices change, so each day's row ends up
  * holding that day's closing value.
  */
-export async function refreshSnapshots(filter: { userId?: string; server?: Server } = {}) {
-  const day = todayUtc();
+export async function refreshSnapshots(filter: { userId?: string; server?: Server; day?: string } = {}) {
+  const day = filter.day ?? todayUtc();
   const conds = [sql`TRUE`];
   if (filter.userId) conds.push(sql`p.user_id = ${filter.userId}`);
   if (filter.server) conds.push(sql`p.server = ${filter.server}`);
@@ -140,7 +145,31 @@ export async function refreshSnapshots(filter: { userId?: string; server?: Serve
   `);
 }
 
-export async function getHistory(userId: string, days = 180) {
+/** Daily price series per item (oldest first), for sparklines. */
+export async function getItemHistories(server: Server, itemIds: number[], days = 30) {
+  const out = new Map<number, { day: string; price: number }[]>();
+  if (itemIds.length === 0) return out;
+  const since = shiftDay(todayUtc(), -days);
+  const rows = await db
+    .select({ itemId: schema.itemPrice.itemId, day: schema.itemPrice.day, price: schema.itemPrice.price })
+    .from(schema.itemPrice)
+    .where(
+      and(
+        eq(schema.itemPrice.server, server),
+        inArray(schema.itemPrice.itemId, itemIds),
+        sql`${schema.itemPrice.day} >= ${since}`,
+      ),
+    )
+    .orderBy(schema.itemPrice.day);
+  for (const r of rows) {
+    const list = out.get(r.itemId) ?? [];
+    list.push({ day: r.day, price: Number(r.price) });
+    out.set(r.itemId, list);
+  }
+  return out;
+}
+
+export async function getHistory(userId: string, days = 3650) {
   const since = shiftDay(todayUtc(), -days);
   return db
     .select({ day: portfolioSnapshot.day, value: portfolioSnapshot.totalValue })
