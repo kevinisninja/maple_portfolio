@@ -53,19 +53,21 @@ export async function searchItems({
     conds.push(/^\d+$/.test(term) ? sql`(lower(name) LIKE ${like} OR game_id = ${Number(term)})` : sql`lower(name) LIKE ${like}`);
   }
   const where = conds.length ? sql`WHERE ${sql.join(conds, sql` AND `)}` : sql``;
-  const rank = term
+  // Searching: best match first, shorter names first. Browsing: alphabetical.
+  // (Never emit a bare literal like `ORDER BY 0` — Postgres reads it as a column position.)
+  const order = term
     ? sql`CASE
         WHEN lower(name) = ${term} OR game_id::text = ${term} THEN 0
         WHEN lower(name) LIKE ${`${esc}%`} THEN 1
         WHEN lower(name) LIKE ${`% ${esc}%`} THEN 2
-        ELSE 3 END`
-    : sql`0`;
+        ELSE 3 END, length(name), name, id`
+    : sql`name, id`;
 
   const [rows, count] = await Promise.all([
     db.execute<CatalogItem>(sql`
       SELECT id, game_id, name, tab, category, icon_url, tradeable
       FROM item ${where}
-      ORDER BY ${rank}, length(name), name, id
+      ORDER BY ${order}
       LIMIT ${limit} OFFSET ${offset}
     `),
     db.execute<{ n: number }>(sql`SELECT count(*)::int AS n FROM item ${where}`),
