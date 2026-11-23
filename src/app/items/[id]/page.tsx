@@ -13,6 +13,9 @@ import { ItemIcon } from "@/components/item-icon";
 import { ServerTabs } from "@/components/server-tabs";
 import { PortfolioHero } from "@/components/portfolio-hero";
 import { AddHoldingForm } from "@/components/holding-forms";
+import { RemoveItemButton } from "@/components/remove-item-button";
+import { isAdmin } from "@/lib/auth";
+import { restoreItem } from "@/app/actions";
 
 async function loadItem(idParam: string) {
   const id = Number(idParam);
@@ -31,15 +34,18 @@ export default async function ItemPage(props: PageProps<"/items/[id]">) {
   const sp = await props.searchParams;
   const serverParam = Array.isArray(sp.server) ? sp.server[0] : sp.server;
   const { server, user } = await resolveServer(serverParam);
+  const admin = isAdmin(user);
+  if (it.hidden && !admin) notFound();
 
   await ensureFreshPrices(server, [it.id]);
   const today = todayUtc();
-  const [prices, histories, held] = await Promise.all([
+  const [prices, histories, held, holderCount] = await Promise.all([
     latestPrices(server, today),
     getItemHistories(server, [it.id], 3650),
     user
       ? db.query.holding.findFirst({ where: and(eq(schema.holding.userId, user.id), eq(schema.holding.itemId, it.id)) })
       : null,
+    admin ? db.$count(schema.holding, eq(schema.holding.itemId, it.id)) : 0,
   ]);
   const current = prices.get(it.id);
   const history = (histories.get(it.id) ?? []).map((p) => ({ day: p.day, value: p.price }));
@@ -60,7 +66,7 @@ export default async function ItemPage(props: PageProps<"/items/[id]">) {
             <div>
               <h1 className="text-2xl font-semibold">{it.name}</h1>
               <p className="text-sm text-[var(--muted)]">
-                {[it.tab && TAB_LABELS[it.tab as keyof typeof TAB_LABELS], it.category, it.gameId != null && `#${it.gameId}`]
+                {[it.tab && TAB_LABELS[it.tab as keyof typeof TAB_LABELS], it.category]
                   .filter(Boolean)
                   .join(" · ")}
               </p>
@@ -120,6 +126,15 @@ export default async function ItemPage(props: PageProps<"/items/[id]">) {
       </div>
 
       <aside className="space-y-6 lg:sticky lg:top-6 lg:self-start">
+        {it.hidden && (
+          <section className="card space-y-3 border-[var(--down)]">
+            <p className="text-sm">This item has been removed from the site. Only admins can see this page.</p>
+            <form action={restoreItem}>
+              <input type="hidden" name="itemId" value={it.id} />
+              <button className="btn-primary w-full">Restore item</button>
+            </form>
+          </section>
+        )}
         {held && current && (
           <section className="card space-y-1">
             <h2 className="font-semibold">Your position</h2>
@@ -132,7 +147,8 @@ export default async function ItemPage(props: PageProps<"/items/[id]">) {
           </section>
         )}
         {user ? (
-          it.tradeable && (
+          it.tradeable &&
+          !it.hidden && (
             <section className="card">
               <h2 className="mb-3 font-semibold">Add to portfolio</h2>
               <AddHoldingForm
@@ -142,6 +158,15 @@ export default async function ItemPage(props: PageProps<"/items/[id]">) {
           )
         ) : (
           <p className="card text-sm text-[var(--muted)]">Sign in to add this to your portfolio.</p>
+        )}
+        {admin && !it.hidden && (
+          <section className="card space-y-2">
+            <h2 className="font-semibold">Admin</h2>
+            <p className="text-xs text-[var(--muted)]">
+              Removing hides it from search and pickers and takes it out of every portfolio.
+            </p>
+            <RemoveItemButton itemId={it.id} name={it.name} holders={holderCount} />
+          </section>
         )}
         <Link href="/items" className="block text-center text-sm text-[var(--accent)] hover:underline">
           ← All items

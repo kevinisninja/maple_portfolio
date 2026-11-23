@@ -24,8 +24,8 @@ export type CatalogItem = {
 };
 
 /**
- * Search the catalog. Ranks exact name > prefix > word prefix > substring; an
- * all-digits query also matches the game item ID.
+ * Search the catalog (hidden items never appear). Ranks exact name > prefix >
+ * word prefix > substring; an all-digits query also matches the game item ID.
  */
 export async function searchItems({
   q = "",
@@ -44,7 +44,7 @@ export async function searchItems({
 }): Promise<{ items: CatalogItem[]; total: number }> {
   const term = q.trim().toLowerCase();
   const esc = term.replace(/[\\%_]/g, "\\$&"); // escape LIKE wildcards (\ is Postgres' default escape)
-  const conds: SQL[] = [];
+  const conds: SQL[] = [sql`NOT hidden`];
   if (!includeUntradeable) conds.push(sql`tradeable`);
   if (tab) conds.push(sql`tab = ${tab}`);
   if (category) conds.push(sql`category = ${category}`);
@@ -79,7 +79,7 @@ export async function searchItems({
 export async function categoriesByTab(includeUntradeable = false) {
   const res = await db.execute<{ tab: string; category: string; n: number }>(sql`
     SELECT tab, category, count(*)::int AS n FROM item
-    WHERE tab IS NOT NULL AND category IS NOT NULL ${includeUntradeable ? sql`` : sql`AND tradeable`}
+    WHERE tab IS NOT NULL AND category IS NOT NULL AND NOT hidden ${includeUntradeable ? sql`` : sql`AND tradeable`}
     GROUP BY tab, category ORDER BY tab, n DESC
   `);
   const out = new Map<string, { category: string; n: number }[]>();

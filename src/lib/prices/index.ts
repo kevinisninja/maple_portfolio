@@ -1,5 +1,5 @@
 import "server-only";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { PriceProvider } from "./types";
 import { IMPLEMENTED as MESOS_WATCH_READY, mesosWatchProvider } from "./mesos-watch";
@@ -24,7 +24,7 @@ export function getProvider(): PriceProvider | null {
         db
           .select({ name: schema.item.name, gameId: schema.item.gameId })
           .from(schema.item)
-          .where(eq(schema.item.tradeable, true)),
+          .where(and(eq(schema.item.tradeable, true), eq(schema.item.hidden, false))),
       );
     default:
       return null;

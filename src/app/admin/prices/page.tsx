@@ -1,6 +1,8 @@
 import Link from "next/link";
-import { asc, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { searchItems } from "@/lib/catalog";
+import { restoreItem } from "@/app/actions";
+import { ItemIcon } from "@/components/item-icon";
 import { db, schema } from "@/db";
 import { requireAdmin } from "@/lib/auth";
 import { latestPrices } from "@/lib/portfolio";
@@ -39,9 +41,20 @@ export default async function AdminPricesPage(props: PageProps<"/admin/prices">)
     latestPrices(server, shiftDay(today, -1)),
     feedStats(server),
   ]);
-  const items = ids.length
-    ? await db.select().from(schema.item).where(inArray(schema.item.id, ids)).orderBy(asc(schema.item.name))
-    : [];
+  const [items, hiddenItems] = await Promise.all([
+    ids.length
+      ? db
+          .select()
+          .from(schema.item)
+          .where(and(inArray(schema.item.id, ids), eq(schema.item.hidden, false)))
+          .orderBy(asc(schema.item.name))
+      : [],
+    db
+      .select({ id: schema.item.id, name: schema.item.name, iconUrl: schema.item.iconUrl })
+      .from(schema.item)
+      .where(eq(schema.item.hidden, true))
+      .orderBy(asc(schema.item.name)),
+  ]);
   const provider = getProvider();
   // Only needed when the provider can't derive its IDs from game IDs.
   const unmapped = provider?.externalIdForGameId
@@ -134,6 +147,24 @@ export default async function AdminPricesPage(props: PageProps<"/admin/prices">)
             {provider?.id === MOCK_PROVIDER_ID && <MockTools />}
             {unmapped.length > 0 && <ExternalIdForm items={unmapped.map((i) => ({ id: i.id, name: i.name }))} />}
           </section>
+          {hiddenItems.length > 0 && (
+            <section className="card">
+              <h2 className="mb-1 font-semibold">Removed items</h2>
+              <p className="mb-3 text-xs text-[var(--muted)]">Hidden from the site. Restoring doesn&apos;t bring back old holdings or prices.</p>
+              <ul className="max-h-64 space-y-1 overflow-y-auto">
+                {hiddenItems.map((h) => (
+                  <li key={h.id} className="flex items-center gap-2 text-sm">
+                    <ItemIcon src={h.iconUrl} size={24} />
+                    <span className="min-w-0 flex-1 truncate">{h.name}</span>
+                    <form action={restoreItem}>
+                      <input type="hidden" name="itemId" value={h.id} />
+                      <button className="text-xs text-[var(--accent)] hover:underline">Restore</button>
+                    </form>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
           <section className="card">
             <h2 className="mb-3 font-semibold">Custom items</h2>
             <CreateItemsForm />

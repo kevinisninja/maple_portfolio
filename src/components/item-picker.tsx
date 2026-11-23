@@ -73,7 +73,7 @@ export function ItemPicker({
           aria-autocomplete="list"
           aria-activedescendant={open && results[active] ? `${listId}-${active}` : undefined}
           className={`input ${picked?.iconUrl ? "pl-10" : ""}`}
-          placeholder="Search items by name or ID…"
+          placeholder="Search items…"
           autoComplete="off"
           value={query}
           onChange={(e) => {
@@ -141,7 +141,6 @@ export function ItemPicker({
                   <span className="block truncate">{r.name}</span>
                   <span className="block truncate text-xs text-[var(--muted)]">
                     {r.category}
-                    {r.gameId != null && ` · #${r.gameId}`}
                   </span>
                 </span>
               </li>

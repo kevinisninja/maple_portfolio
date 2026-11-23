@@ -102,6 +102,11 @@ export const item = pgTable(
     iconUrl: text("icon_url"),
     /** False for untradeable / quest / cash items; hidden from pickers. */
     tradeable: boolean("tradeable").notNull().default(true),
+    /**
+     * Removed by an admin. Kept as a tombstone (rather than deleted) so the
+     * deploy-time catalog seed doesn't re-add it; the seed never touches this.
+     */
+    hidden: boolean("hidden").notNull().default(false),
     npcPrice: bigint("npc_price", { mode: "number" }),
     stats: jsonb("stats").$type<Record<string, number>>(),
     /** The price provider's identifier for this item; null = not mapped (manual prices only). */

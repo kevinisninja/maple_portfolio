@@ -2,7 +2,8 @@
 /**
  * Convert an extracted item dump (tools/extract_items.py output) into the
  * app's bundled catalog:
- *   data/items.json        compact records for every named item
+ *   data/items.json        compact records for every named, tradeable item
+ *                          (untradeable / quest / Cash Shop items are skipped)
  *   public/items/<id>.png  inventory icons (served from the CDN)
  *
  * Usage: node scripts/build-item-data.mjs <path-to-extracted-items-folder>
@@ -86,6 +87,7 @@ for (const tab of TABS) {
     if (!name) continue; // unused client leftovers
     const info = r.data?.info ?? {};
     const tradeable = !info.tradeBlock && !info.quest && !info.pquest && !info.cash && tab !== "cash";
+    if (!tradeable) continue; // can't be traded between players, so it has no market price
 
     let stats;
     if (tab === "equip") stats = pick(info, EQUIP_KEYS);

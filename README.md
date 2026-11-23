@@ -40,7 +40,7 @@ The catalog comes from the game client's datamined item dump (`tools/extract_ite
 npm run items:build -- <path-to-extracted-items-folder>   # writes data/items.json + public/items/<id>.png
 ```
 
-Commit the result. Every deploy runs `scripts/seed-items.mjs` after migrations, which upserts every item by `game_id`; re-running it is safe. Untradeable, quest and Cash Shop items are stored with `tradeable = false` and hidden from search and pickers. Item names are **not** unique (the game reuses some), so code keys on `id` or `game_id`. Imports accept a game ID in place of a name.
+Commit the result. Every deploy runs `scripts/seed-items.mjs` after migrations, which upserts every item by `game_id`; re-running it is safe. Only tradeable items are bundled; untradeable, quest and Cash Shop items are skipped. Admins can **remove** an item from its item page: game items become `hidden` (the seed never un-hides them, so they stay removed across deploys) and leave every portfolio. Custom items are deleted. Restore removed items from the Prices page. Item names are **not** unique (the game reuses some), so code keys on `id` or `game_id`. Imports accept a game ID in place of a name.
 
 ## Pages
 

@@ -50,7 +50,7 @@ export default async function ItemsPage(props: PageProps<"/items">) {
         {tab && <input type="hidden" name="tab" value={tab} />}
         {category && <input type="hidden" name="category" value={category} />}
         {one(sp.server) && <input type="hidden" name="server" value={one(sp.server)} />}
-        <input name="q" defaultValue={q} className="input" placeholder="Search by name or item ID…" aria-label="Search items" />
+        <input name="q" defaultValue={q} className="input" placeholder="Search items…" aria-label="Search items" />
         <button className="btn-primary">Search</button>
       </form>
 
@@ -96,7 +96,6 @@ export default async function ItemsPage(props: PageProps<"/items">) {
                     <span className="block truncate font-medium">{it.name}</span>
                     <span className="block truncate text-xs text-[var(--muted)]">
                       {it.category}
-                      {it.game_id != null && ` · #${it.game_id}`}
                     </span>
                   </span>
                   <span className="shrink-0 text-right text-sm font-medium tabular-nums">

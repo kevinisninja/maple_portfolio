@@ -5,7 +5,7 @@ import {
   backfillMock,
   clearMock,
   createItems,
-  deleteItem,
+  removeItem,
   importPrices,
   refreshFeedNow,
   saveExternalIds,
@@ -78,13 +78,13 @@ export function PriceGridForm({ server, rows, today }: { server: Server; rows: R
               </td>
               <td>
                 <form
-                  action={deleteItem}
+                  action={removeItem}
                   onSubmit={(e) => {
-                    if (!confirm(`Delete "${r.name}"? This removes it from every portfolio.`)) e.preventDefault();
+                    if (!confirm(`Remove "${r.name}" from the site? It leaves every portfolio and loses its price history.`)) e.preventDefault();
                   }}
                 >
                   <input type="hidden" name="itemId" value={r.id} />
-                  <button className="px-1 text-[var(--muted)] hover:text-[var(--down)]" title="Delete item">✕</button>
+                  <button className="px-1 text-[var(--muted)] hover:text-[var(--down)]" title="Remove item">✕</button>
                 </form>
               </td>
             </tr>

@@ -51,7 +51,11 @@ export async function ensureFreshPrices(
     const candidates = await db
       .select({ id: item.id, externalId: item.externalId, gameId: item.gameId })
       .from(item)
-      .where(itemIds ? and(priceable, inArray(item.id, itemIds)) : and(priceable, eq(item.tradeable, true)));
+      .where(
+        itemIds
+          ? and(priceable, eq(item.hidden, false), inArray(item.id, itemIds))
+          : and(priceable, eq(item.hidden, false), eq(item.tradeable, true)),
+      );
     const mapped = candidates
       .map((c) => ({ id: c.id, externalId: c.externalId ?? (derive && c.gameId != null ? derive(c.gameId) : null) }))
       .filter((c): c is { id: number; externalId: string } => c.externalId != null);

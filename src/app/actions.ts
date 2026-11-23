@@ -37,9 +37,12 @@ async function itemsByName(refs: string[]) {
     .select()
     .from(item)
     .where(
-      ids.length
-        ? or(inArray(sql<string>`lower(${item.name})`, keys), inArray(item.gameId, ids))
-        : inArray(sql<string>`lower(${item.name})`, keys),
+      and(
+        eq(item.hidden, false),
+        ids.length
+          ? or(inArray(sql<string>`lower(${item.name})`, keys), inArray(item.gameId, ids))
+          : inArray(sql<string>`lower(${item.name})`, keys),
+      ),
     );
   const better = (a: typeof item.$inferSelect, b: typeof item.$inferSelect) =>
     Number(b.tradeable) - Number(a.tradeable) || (a.gameId ?? Infinity) - (b.gameId ?? Infinity);
@@ -112,6 +115,8 @@ export async function setHolding(_prev: FormState, formData: FormData): Promise<
   const mode = formData.get("mode") === "add" ? "add" : "set";
   if (!Number.isInteger(itemId) || itemId <= 0) return { error: "Pick an item" };
   if (!Number.isFinite(quantity) || quantity < 0) return { error: "Enter a valid quantity" };
+  const target = await db.query.item.findFirst({ where: eq(item.id, itemId), columns: { hidden: true } });
+  if (!target || target.hidden) return { error: "That item isn't available" };
 
   await upsertHoldings(user.id, [{ itemId, quantity: Math.round(quantity) }], mode);
   await refreshSnapshots({ userId: user.id });
@@ -189,14 +194,40 @@ export async function createItems(_prev: FormState, formData: FormData): Promise
   return { ok: `Added ${inserted.length} item(s)${skipped ? `, ${skipped} already existed` : ""}` };
 }
 
-export async function deleteItem(formData: FormData) {
+/**
+ * Remove an item from the site. Game items are hidden (a tombstone, so the
+ * deploy-time seed doesn't bring them back); custom items are deleted. Either
+ * way it leaves every portfolio and loses its price history.
+ */
+export async function removeItem(formData: FormData) {
   await requireAdmin();
   const id = Number(formData.get("itemId"));
   if (!Number.isInteger(id)) return;
-  await db.delete(item).where(eq(item.id, id));
+  const row = await db.query.item.findFirst({ where: eq(item.id, id), columns: { gameId: true } });
+  if (!row) return;
+  if (row.gameId == null) {
+    await db.delete(item).where(eq(item.id, id)); // cascades to holdings / prices
+  } else {
+    await db.update(item).set({ hidden: true }).where(eq(item.id, id));
+    await db.delete(holding).where(eq(holding.itemId, id));
+    await db.delete(itemPrice).where(eq(itemPrice.itemId, id));
+    await db.delete(schema.priceRefresh).where(eq(schema.priceRefresh.itemId, id));
+  }
   await refreshSnapshots();
   revalidatePath("/admin/prices");
+  revalidatePath("/items");
+  revalidatePath(`/items/${id}`);
   revalidateAll();
+}
+
+export async function restoreItem(formData: FormData) {
+  await requireAdmin();
+  const id = Number(formData.get("itemId"));
+  if (!Number.isInteger(id)) return;
+  await db.update(item).set({ hidden: false }).where(eq(item.id, id));
+  revalidatePath("/admin/prices");
+  revalidatePath("/items");
+  revalidatePath(`/items/${id}`);
 }
 
 /* ───────────── Admin: prices ───────────── */
