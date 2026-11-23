@@ -43,7 +43,11 @@ export default async function ItemPage(props: PageProps<"/items/[id]">) {
   ]);
   const current = prices.get(it.id);
   const history = (histories.get(it.id) ?? []).map((p) => ({ day: p.day, value: p.price }));
-  const stats = Object.entries(it.stats ?? {}).filter(([k]) => STAT_LABELS[k]);
+  // jsonb doesn't preserve key order, so present stats in STAT_LABELS order (requirements first).
+  const statOrder = Object.keys(STAT_LABELS);
+  const stats = Object.entries(it.stats ?? {})
+    .filter(([k]) => STAT_LABELS[k])
+    .sort(([a], [b]) => statOrder.indexOf(a) - statOrder.indexOf(b));
 
   return (
     <div className="grid gap-10 lg:grid-cols-[1fr_320px]">
